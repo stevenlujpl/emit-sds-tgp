@@ -45,7 +45,10 @@ import pandas as pd
 from typing import List
 import subprocess
 import click
+import yaml
+import geopandas as gpd
 
+import pv.pv
 from annotate import plume_io, filter, utils
 from quantification import compute_flux, windspeed, compute_Q_and_uncertainty_utils
 
@@ -66,6 +69,7 @@ def get_sds_cog(fid, enh_version, dtype='ch4', data_value=''):
 @click.option('--enh_data_version', type=str, default='v02')
 @click.option('--gtype', type=click.Choice(['ch4','co2']), default='ch4')
 @click.option('--database_config', type=str,  default='/store/emit/ops/repos/emit-main/emit_main/config/ops_sds_config.json')
+@click.option('--pv_config', type=str, default='TBD')
 @click.option('--loglevel', type=str, default='DEBUG', help='logging verbosity')
 @click.option('--logfile', type=str, default=None, help='output file to write log to')
 @click.option('--continuous', is_flag=True, help='run continuously')
@@ -80,7 +84,7 @@ def get_sds_cog(fid, enh_version, dtype='ch4', data_value=''):
 @click.option('--raw_annotation_override', type=str, default=None, help='ignore the key and id, and use this local file as the raw annotation input')
 @click.option('--sync_only', is_flag=True, help='Only sync data')
 def main(key: str, id: str, out_dir: str, data_version: str, enh_data_version: str, 
-         gtype: str, database_config: str, loglevel, logfile, continuous, track_coverage_file, 
+         gtype: str, database_config: str, pv_config:str, loglevel, logfile, continuous, track_coverage_file,
          plume_buffer_px, write_dcid_tifs, n_cores, num_dcids, specific_pid, sync_results, 
          software_build_version, raw_annotation_override, sync_only):
 
@@ -95,6 +99,7 @@ def main(key: str, id: str, out_dir: str, data_version: str, enh_data_version: s
     args.enh_data_version = enh_data_version
     args.type = gtype
     args.database_config = database_config
+    args.pv_config = pv_config
     args.loglevel = loglevel
     args.logfile = logfile
     args.continuous = continuous
@@ -327,6 +332,7 @@ class Filenames:
         self.delivery_dir = os.path.join(args.out_dir, 'delivery') # Delivery file directory
         self.quant_dir = os.path.join(args.out_dir, 'quantification') # Quantification working directory
         self.proc_dir = os.path.join(args.out_dir, 'processing') # Processing working directory
+        self.pv_dir = os.path.join(args.out_dir, 'plume_vetting') # Plume vetting working directory
         self.working_windspeed_csv = os.path.join(args.out_dir, 'working_windspeed_estimates.csv') # Quantification windspeed working file
 
         self.dst_plm_cogdir = f'redhat:/data/emit/mmgis/mosaics/plm_cogs/{args.type}'
@@ -340,6 +346,7 @@ class Filenames:
             os.makedirs(self.quant_dir, exist_ok=True)
             os.makedirs(self.proc_dir, exist_ok=True)
             os.makedirs(self.daac_dir, exist_ok=True)
+            os.makedirs(self.pv_dir, exist_ok=True)
         
     @staticmethod
     def plume_delivery_basename(outdir, feat):
@@ -355,6 +362,13 @@ class Filenames:
         outmask_poly_file = outbase + '_polygon.json'
         outmask_ort_file = outbase + '_mask_ort.tif'
         return outmask_finepoly_file, outmask_poly_file, outmask_ort_file
+
+    def plume_vetting_filenames(self, feat):
+        outbase = self.plume_working_basename(self.pv_dir, feat)
+        out_inoutplume_file = outbase + '_inoutplume.png'
+        out_spectralmatch_file = outbase + '_spectralmatch.png'
+
+        return out_inoutplume_file, out_spectralmatch_file, outbase
 
     def quantification_filenames(self, poly_plume):
         base = self.plume_working_basename(self.quant_dir, poly_plume)
@@ -600,6 +614,25 @@ def process_dcid(dcid, manual_annotations, new_plumes, fn, args):
             working_windspeed_csv=fn.working_windspeed_csv,
             overrule_simple_ime_flag=True, # we want to run the calc no matter what - we'll discard later per metadata
         )
+
+        # Plume vetting - compute d_norm score and estimated plume length
+        pv_cfg = yaml.safe_load(args.pv_config)
+        gpd_plume_data = gpd.GeoDataFrame.from_features(manual_annotations['features'])
+
+        out_inoutplume_file, out_spectralmatch_file, out_ch4target_basefile = fn.plume_vetting_filenames(feat)
+        pv_result = pv.pv.plume_vetting(
+            plume_data=gpd_plume_data,
+            plume_id=feat['properties']['Plume ID'],
+            cfg=pv_cfg,
+            out_inoutplume_file=out_inoutplume_file,
+            out_spectralmatch_file=out_spectralmatch_file,
+            out_ch4target_basefile=out_ch4target_basefile,
+        )[0]
+
+        # TODO: How to save pv_result in MMGIS JSON file?
+        # pv_result[0] = d_norm score
+        # pv_result[1] = estimated plume length
+
 
 
         poly_plume['properties'].update(emissions_info)
