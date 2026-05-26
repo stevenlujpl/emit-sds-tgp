@@ -307,12 +307,12 @@ def get_plume_metadata_MMGIS(
     except:
         raise IndexError(f'Plume ID {curr_id} not found in metadata!')
 
-    if feature['properties']['Psuedo-Origin'] == '':
+    if 'Origin' not in feature['properties'] or len(feature['properties']['Origin']) == 0:
         raise ValueError('Missing pseudo-origin data!')
     
-    pseudo_o = json.loads(feature['properties']['Psuedo-Origin'])
-    plume_lat = pseudo_o['coordinates'][1]
-    plume_lon = pseudo_o['coordinates'][0]
+    pseudo_o = feature['properties']['Origin'][0]
+    plume_lat = pseudo_o['coords'][1]
+    plume_lon = pseudo_o['coords'][0]
     fids_name = 'fids' if 'fids' in list(feature['properties'].keys()) else 'Scene FIDs'
     scene_fids = feature['properties'][fids_name]
     scene_fids = scene_fids if isinstance(scene_fids, list) else [scene_fids]
