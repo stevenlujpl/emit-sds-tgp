@@ -615,6 +615,9 @@ def process_dcid(dcid, manual_annotations, new_plumes, fn, args):
             overrule_simple_ime_flag=True, # we want to run the calc no matter what - we'll discard later per metadata
         )
 
+        poly_plume['properties'].update(emissions_info)
+        point_plume['properties'].update(emissions_info)
+
         # Plume vetting - compute d_norm score and estimated plume length
         pv_cfg = yaml.safe_load(args.pv_config)
         gpd_plume_data = gpd.GeoDataFrame.from_features(manual_annotations['features'])
@@ -629,14 +632,8 @@ def process_dcid(dcid, manual_annotations, new_plumes, fn, args):
             out_ch4target_basefile=out_ch4target_basefile,
         )[0]
 
-        # TODO: How to save pv_result in MMGIS JSON file?
-        # pv_result[0] = d_norm score
-        # pv_result[1] = estimated plume length
-
-
-
-        poly_plume['properties'].update(emissions_info)
-        point_plume['properties'].update(emissions_info)
+        poly_plume['properties']['d_norm'] = pv_result[0]
+        poly_plume['properties']['estimated_plume_length'] = pv_result[1]
 
         # For the delivery file, if not flagged for emissions delivery, don't include
         plume_io.write_delivery_json(delivery_json_file, poly_plume, meta['DAAC Scene Names'], deliver_emissions)
