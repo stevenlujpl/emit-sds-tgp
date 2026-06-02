@@ -51,6 +51,7 @@ import logging
 osr.UseExceptions()
 
 from scipy.spatial.distance import pdist,squareform
+from scipy.spatial import ConvexHull, distance_matrix
 
 from skimage.measure import label as imlabel
 from skimage.morphology import disk, remove_small_objects
@@ -1068,7 +1069,7 @@ def compute_flux(args):
 
 def make_plot(pltcmf, plumemask, i, j, maxfetchpx, manual_boundary_coordinates_ij, imin, imax, jmin, jmax, imefigf, ps):
     off = 5
-    
+
     circle_min_x, circle_max_x = max(jmin-off, 0), min(jmax+off, pltcmf.shape[1])
     circle_min_y, circle_max_y = max(imin-off, 0), min(imax+off, pltcmf.shape[0])
 
@@ -1136,12 +1137,20 @@ def make_plot(pltcmf, plumemask, i, j, maxfetchpx, manual_boundary_coordinates_i
     ax[0][2].plot(0, 0, 'o', color = 'red', markersize = 10)
     ax[1][2].plot(0, 0, 'o', color = 'red', markersize = 10)
 
+    # The line between the two furthest points (that makes the fetch calculation)
+    pt1, pt2, _ = find_max_distance_hull(plumemask)
+    pt1_c = np.array([pt1[1] - j, pt1[0] - i])*ps
+    pt2_c = np.array([pt2[1] - j, pt2[0] - i])*ps
+
     for axes in ax:
         for a in axes:
             circle = patches.Circle((0,0), maxfetchpx*ps, fill=False, edgecolor='white', linewidth=2)
             a.add_patch(circle)
             if len(manual_boundary_coordinates_ij) > 0:
                 a.plot((plume_x-j)*ps, (plume_y-i)*ps, color = 'white')
+            
+            # Draw an arrow between the two furthest mask points
+            a.annotate("", xy=pt1_c, xytext=pt2_c, arrowprops=dict(arrowstyle="<->", color='cyan'))
 
     if len(manual_boundary_coordinates_ij) > 0:
         ax[0][0].set_xlim([plume_min_x_m, plume_max_x_m])
@@ -1163,9 +1172,33 @@ def make_plot(pltcmf, plumemask, i, j, maxfetchpx, manual_boundary_coordinates_i
     ax[0][2].set_ylim([circle_min_y_m, circle_max_y_m])
     ax[1][2].set_xlim([circle_min_x_m, circle_max_x_m])
     ax[1][2].set_ylim([circle_min_y_m, circle_max_y_m])
+
     
     pl.savefig(imefigf)
     pl.close()
+
+def find_max_distance_hull(bool_array):
+    # 1. Extract coordinates of all True values
+    coords = np.argwhere(bool_array)
+    
+    if len(coords) < 2:
+        return None, None, 0.0
+
+    # 2. Find the Convex Hull vertices
+    # This reduces N points to h boundary points (h << N)
+    hull = ConvexHull(coords)
+    hull_points = coords[hull.vertices]
+
+    # 3. Calculate pairwise distances only for hull vertices
+    dist_matrix = distance_matrix(hull_points, hull_points)
+    
+    # 4. Find the maximum distance and its endpoint indices
+    i, j = np.unravel_index(np.argmax(dist_matrix), dist_matrix.shape)
+    
+    p1, p2 = hull_points[i], hull_points[j]
+    max_dist = dist_matrix[i, j]
+    
+    return p1, p2, max_dist
 
 if __name__ == '__main__':
     import argparse

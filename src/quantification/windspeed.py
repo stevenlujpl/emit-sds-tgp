@@ -23,6 +23,7 @@ import pandas as pd
 import json
 import os
 import cdsapi
+import requests
 import xarray as xr
 import datetime
 import click
@@ -150,7 +151,7 @@ def update_EMIT_plume_list_windspeeds(current_wind_speed_csv_filename = None,
         ind = all_plume_list.index(new_plume)
         
         fids_str = '_'.join(j['features'][ind]['properties']['fids'])
-        if j['features'][ind]['properties']['Psuedo-Origin'] == '':
+        if j['features'][ind]['properties']['Origin'] == '':
             d = {'plume_id': new_plume, 'FID': fids_str}
             results_list.append(d)
             continue
@@ -158,7 +159,7 @@ def update_EMIT_plume_list_windspeeds(current_wind_speed_csv_filename = None,
         d = get_EMIT_plume_windspeeds(new_plume, current_wind_speed_csv_filename)
         d = d.to_dict(orient='records')[0]
 
-        #lon, lat, _ = json.loads(j['features'][ind]['properties']['Psuedo-Origin'])['coordinates']
+        #lon, lat, _ = json.loads(j['features'][ind]['properties']['Origin'])['coordinates']
         #fids_str = '_'.join(j['features'][ind]['properties']['fids'])
         #fid = j['features'][ind]['properties']['fids'][0] # Just use the first one if there are two
 
@@ -222,10 +223,11 @@ def get_EMIT_plume_windspeeds(plume, input_wind_speed_csv_filename = None):
     '''
     
     logging.debug(f'Get windspeed for {plume["properties"]["Plume ID"]}')
-    if plume['properties']['Psuedo-Origin'] == '':
+    if 'Origin' not in plume['properties'] or plume['properties']['Origin'] == '' or len(plume['properties']['Origin']) == 0 :
         return None
 
-    lon, lat, _ = json.loads(plume['properties']['Psuedo-Origin'])['coordinates']
+    lat = plume['properties']['Origin'][0]['coords'][1]
+    lon = plume['properties']['Origin'][0]['coords'][0]
     date, frac_time = get_datetime_from_fid(plume['properties']['fids'][0])
 
     if os.path.exists(input_wind_speed_csv_filename):
@@ -240,7 +242,12 @@ def get_EMIT_plume_windspeeds(plume, input_wind_speed_csv_filename = None):
         ))
         #match_idx = df_current['plume_id'] == plume['properties']['Plume ID']
         if np.sum(match_idx) == 1:
-            return df_current[match_idx], False
+            cached_row = df_current[match_idx]
+            # If ERA5 windspeed was previously unavailable, fall through to recompute
+            if pd.isna(cached_row['w10_era5_m_per_s'].values[0]):
+                logging.info(f'Cached windspeed for {plume["properties"]["Plume ID"]} has NaN ERA5, will retry full computation...')
+            else:
+                return cached_row, False
         elif np.sum(match_idx) > 1:
             logging.warning(f'Multiple matching windspeed entries found for plume {plume["properties"]["Plume ID"]} at lat {lat}, lon {lon}, date {date}, frac_time {frac_time}. Using the first match.')
             return df_current[match_idx].iloc[[0]], False 
@@ -354,7 +361,13 @@ def get_w10_from_ERA5_Climate_Data_Store(plume_lat, plume_lon, date, hour_rounde
     }
 
     client = cdsapi.Client(quiet=False,debug=False)
-    client.retrieve(dataset, request).download(fname)
+    try:
+        client.retrieve(dataset, request).download(fname)
+    except requests.exceptions.HTTPError as e:
+        if 'not available yet' in str(e):
+            logging.warning(f'ERA5 data not yet available for {date} {hour_rounded}: {e}')
+            return tuple([np.nan] * 8)
+        raise
 
     ds = xr.open_dataset(fname)
     lat, lon = ds['latitude'], ds['longitude'] # Longitude is deg E, 0 to 360

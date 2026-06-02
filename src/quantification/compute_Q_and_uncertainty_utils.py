@@ -156,13 +156,13 @@ def single_plume_emissions(feat: dict,
                 self.name_suffix = ''
                 self.plot_path = quant_dir
 
-                if feat['properties']['Psuedo-Origin'] in [None, '']:
+                if 'Origin' not in feat['properties'].keys() or feat['properties']['Origin'] is None or len(feat['properties']['Origin']) == 0:
                     self.lat = None
                     self.lng = None
                 else:
-                    pso = json.loads(feat['properties']['Psuedo-Origin'])
-                    self.lat = pso['coordinates'][1]
-                    self.lng = pso['coordinates'][0]
+                    pso = feat['properties']['Origin'][0]
+                    self.lat = pso['coords'][1]
+                    self.lng = pso['coords'][0]
 
                 self.cmfimgf = delivery_raster_file
                 self.sns_file = delivery_sens_file
@@ -187,7 +187,7 @@ def single_plume_emissions(feat: dict,
 
         lfa = flux_args()
         if lfa.lat is None or lfa.lng is None:
-            logging.warning(f'Plume {lfa.fid} missing Psuedo-Origin, skipping plume')
+            logging.warning(f'Plume {lfa.fid} missing Origin, skipping plume')
             return emissions_info, None
 
         with open(os.path.join(proc_dir, f'flux_args_{poly_plume["properties"]["Plume ID"]}.json'),'wb') as pf:

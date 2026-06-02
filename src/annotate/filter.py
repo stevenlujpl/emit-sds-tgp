@@ -66,7 +66,7 @@ def add_fids(manual_annotations, coverage, manual_annotations_previous):
 
     dm_mr1 = 'Missing "R1 - Reviewed" field'
     dm_int = 'Deleting entry from no intersection'
-    dm_emis = 'Entries desiring emissions estimate need Psuedo-Origin'
+    dm_emis = 'Entries desiring emissions estimate need Origin'
 
     # do some dataframe conversion once ahead of time to make things faster
     coverage_df = pd.json_normalize(coverage['features'])
@@ -83,7 +83,7 @@ def add_fids(manual_annotations, coverage, manual_annotations_previous):
             continue # This is insufficient
 
         if  feat['properties']['Simple IME Valid'] == 'Yes' and \
-            ('Psuedo-Origin' not in feat['properties'].keys() or feat['properties']['Psuedo-Origin'] in [None, '']):
+            ('Origin' not in feat['properties'].keys() or feat['properties']['Origin'] is None or len(feat['properties']['Origin']) == 0):
             todel.append(_feat)
             del_msg.append(dm_emis)
             continue
@@ -97,7 +97,7 @@ def add_fids(manual_annotations, coverage, manual_annotations_previous):
             # check reviews
             rev_match = True
             for rl in ['R1 - Reviewed','R2 - Reviewed','R1 - VISIONS','R2 - VISIONS', 
-                       'Psuedo-Origin', 'Sector', 'Sector Confidence', 'Time Range End', 'Time Range Start', 'Simple IME Valid']:
+                       'Origin', 'Sector', 'Sector Confidence', 'Time Range End', 'Time Range Start', 'Simple IME Valid']:
                 if rl in feat['properties'] and rl in manual_annotations_previous['features'][prev_idx]['properties']:
                     if feat['properties'][rl] != manual_annotations_previous['features'][prev_idx]['properties'][rl]:
                         rev_match = False

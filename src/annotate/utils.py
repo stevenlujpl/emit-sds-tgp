@@ -147,7 +147,7 @@ def build_plume_properties(plume_input_properties, plume_geometry, plume_data, t
     props['Sector'] = loc_pp['Sector']
     props['Sector Confidence'] = loc_pp['Sector Confidence']
     props['Delineation Mode'] = loc_pp['Delineation Mode']
-    props['Psuedo-Origin'] = loc_pp['Psuedo-Origin']
+    props['Origin'] = loc_pp['Origin'] if 'Origin' in loc_pp.keys() else []
     props['Simple IME Valid'] = loc_pp['Simple IME Valid']
     props['Time Created'] = loc_pp['Time Created']
 
